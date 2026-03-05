@@ -14,10 +14,16 @@ SHEET_JSON = os.environ.get('GSPREAD_SERVICE_ACCOUNT')
 
 # Google Sheets Bağlantısı
 def tabloya_baglan():
+    # GitHub'dan gelen veriyi kontrol et
+    if not SHEET_JSON:
+        raise ValueError("GSPREAD_SERVICE_ACCOUNT anahtarı GitHub'da bulunamadı!")
+    
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = json.loads(SHEET_JSON)
+    # Şifreyi JSON formatına çevirirken hata almaması için temizleme yapıyoruz
+    creds_dict = json.loads(SHEET_JSON.strip()) 
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
+    # Tablo isminin Google Sheets'teki isimle BİREBİR aynı olduğundan emin ol
     return client.open("Borsa_Sinyal_Takip").sheet1
 
 async def analiz_ve_tabloya_yaz(bot, sheet, sembol, sektor):
