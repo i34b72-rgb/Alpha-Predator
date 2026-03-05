@@ -2,4 +2,3 @@ pandas
 yfinance
 python-telegram-bot
 matplotlib
-requests
