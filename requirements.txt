@@ -1,5 +1,6 @@
 pandas
 yfinance
 python-telegram-bot
+matplotlib
 gspread
 oauth2client
