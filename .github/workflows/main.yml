@@ -1,0 +1,19 @@
+name: Alpha_Predator_Run
+on:
+  schedule:
+    - cron: '0 07,15 * * 1-5' # Hafta içi TSİ 10:00 ve 18:00 (Açılış ve Kapanış)
+  workflow_dispatch:
+
+jobs:
+  run-alpha:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: python bot.py
