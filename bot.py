@@ -23,16 +23,17 @@ SEKTORLER = {
     "HOLDING": ["KCHOL.IS", "SAHOL.IS"]
 }
 
+SHEET_JSON = os.getenv('GSPREAD_SERVICE_ACCOUNT') 
+
 def tabloya_baglan():
-    """Google Sheets bağlantısını kurar."""
     if not SHEET_JSON:
-        raise ValueError("GitHub Secrets: GSPREAD_SERVICE_ACCOUNT eksik!")
+        # Hata mesajını daha detaylı görelim
+        raise ValueError("GSPREAD_SERVICE_ACCOUNT kasadan okunamadı! YAML dosyanızı kontrol edin.")
     
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = json.loads(SHEET_JSON.strip())
+    creds_dict = json.loads(SHEET_JSON)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
-    # Google Sheets'teki dosya adıyla birebir aynı olmalı
     return client.open("Borsa_Sinyal_Takip").sheet1
 
 def rsi_hesapla(series, period=14):
