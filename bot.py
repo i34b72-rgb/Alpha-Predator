@@ -6,7 +6,7 @@ from telegram import Bot
 
 # --- AYARLAR ---
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
-MY_ID = 12345678 # KESİNLİKLE KENDİ ID'Nİ YAZ
+MY_ID = 750480616 # KESİNLİKLE KENDİ ID'Nİ YAZ
 HISSELER = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "BTC-USD"]
 
 def rsi_hesapla(series, period=14):
