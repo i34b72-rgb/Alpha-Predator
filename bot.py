@@ -1,79 +1,58 @@
 import yfinance as yf
-import pandas as pd
-import matplotlib.pyplot as plt
-import asyncio
+import gspread
 import os
+import json
+from oauth2client.service_account import ServiceAccountCredentials
 from telegram import Bot
+import asyncio
+from datetime import datetime
 
 # --- AYARLAR ---
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 MY_ID = 750480616 # Kendi ID numaranı yaz
+SHEET_JSON = os.environ.get('GSPREAD_SERVICE_ACCOUNT')
 
-# SEKTÖREL GRUPLANDIRMA (Adım 1)
-SEKTORLER = {
-    "HAVACILIK": ["THYAO.IS", "PGSUS.IS", "TAVHL.IS"],
-    "BANKA": ["AKBNK.IS", "GARAN.IS", "ISCTR.IS", "YKBNK.IS"],
-    "ENERJI": ["ASTOR.IS", "EUPWR.IS", "ALFAS.IS", "ENJSA.IS", "SASA.IS"],
-    "DEMIR-CELIK": ["EREGL.IS", "KRDMD.IS"],
-    "PERAKENDE": ["BIMAS.IS", "MGROS.IS", "SOKM.IS"],
-    "HOLDING": ["KCHOL.IS", "SAHOL.IS", "DOHOL.IS"]
-}
+# Google Sheets Bağlantısı
+def tabloya_baglan():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds_dict = json.loads(SHEET_JSON)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    return client.open("Borsa_Sinyal_Takip").sheet1
 
-def rsi_hesapla(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / (loss + 1e-9)
-    return 100 - (100 / (1 + rs))
-
-async def analiz_ve_kaydet(bot, sembol, sektor_adi):
+async def analiz_ve_tabloya_yaz(bot, sheet, sembol, sektor):
     try:
-        df = yf.Ticker(sembol).history(period="60d")
-        if len(df) < 30: return
-
-        df['RSI'] = rsi_hesapla(df['Close'])
-        son = df.iloc[-1]
+        hisse = yf.Ticker(sembol)
+        df = hisse.history(period="60d")
+        if len(df) < 20: return
         
-        # STRATEJİ: RSI 35 Altı (Adım 2 için kayıt tetikleyici)
-        if son['RSI'] <= 35:
-            # 1. Kayıt (Performans Ölçümü İçin - Adım 2)
-            yeni_kayit = pd.DataFrame([{
-                'Tarih': son.name, 'Hisse': sembol, 'Fiyat': son['Close'], 'RSI': son['RSI'], 'Sektor': sektor_adi
-            }])
-            yeni_kayit.to_csv('sinyal_kayitlari.csv', mode='a', index=False, header=not os.path.exists('sinyal_kayitlari.csv'))
+        # Basit RSI Hesaplama
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / (loss + 1e-9)
+        rsi = 100 - (100 / (1 + rs)).iloc[-1]
+        son_fiyat = df['Close'].iloc[-1]
 
-            # 2. Grafik ve Mesaj (Adım 1 & 3)
-            plt.style.use('dark_background')
-            plt.figure(figsize=(10, 5))
-            plt.plot(df.index[-20:], df['Close'][-20:], color='#00ff00', marker='o')
-            plt.title(f"{sembol} ({sektor_adi}) - Sinyal: RSI {son['RSI']:.1f}")
+        if rsi <= 35:
+            tarih = datetime.now().strftime("%d/%m/%Y %H:%M")
+            # Google Sheets'e yeni satır ekle
+            sheet.append_row([tarih, sektor, sembol, round(son_fiyat, 2), round(rsi, 1), "FIRSAT"])
             
-            # AI Yorumu Hazırlığı (Adım 3)
-            ai_notu = "🤖 AI Analizi: RSI dipte, hacim kontrol edilmeli. Tepki alımı muhtemel."
-            
-            caption = (f"🎯 <b>{sembol} [{sektor_adi}]</b>\n\n"
-                       f"💰 Fiyat: {son['Close']:.2f} TL\n"
-                       f"📊 RSI: {son['RSI']:.1f}\n\n"
-                       f"{ai_notu}\n"
-                       f"📈 <i>Bu sinyal kâr/zarar takibi için kaydedildi.</i>")
-
-            dosya = f"{sembol}.png"
-            plt.savefig(dosya)
-            plt.close()
-            with open(dosya, 'rb') as p:
-                await bot.send_photo(chat_id=MY_ID, photo=p, caption=caption, parse_mode='HTML')
-            os.remove(dosya)
-
+            # Telegram Mesajı
+            await bot.send_message(chat_id=MY_ID, text=f"✅ {sembol} Tabloya Kaydedildi!\nFiyat: {son_fiyat:.2f}\nRSI: {rsi:.1f}")
     except Exception as e:
-        print(f"{sembol} hatası: {e}")
+        print(f"Hata {sembol}: {e}")
 
 async def ana_islem():
     bot = Bot(token=TOKEN)
-    await bot.send_message(chat_id=MY_ID, text="🐺 <b>Alpha Predator V3: Sektörel Tarama Başladı</b>", parse_mode='HTML')
+    sheet = tabloya_baglan()
     
-    for sektor, hisseler in SEKTORLER.items():
-        tasks = [analiz_ve_kaydet(bot, s, sektor) for s in hisseler]
-        await asyncio.gather(*tasks)
+    hisseler = {"HAVACILIK": ["THYAO.IS"], "ENERJI": ["ASTOR.IS"]} # Listeni buraya ekle
+    
+    for sektor, liste in hisseler.items():
+        for s in liste:
+            await analiz_ve_tabloya_yaz(bot, sheet, s, sektor)
 
 if __name__ == "__main__":
     asyncio.run(ana_islem())
