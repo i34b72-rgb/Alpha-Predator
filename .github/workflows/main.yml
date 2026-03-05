@@ -1,19 +1,26 @@
-name: Alpha_Predator_Run
+name: Borsa_Alpha_Predator
 on:
   schedule:
-    - cron: '0 07,15 * * 1-5' # Hafta içi TSİ 10:00 ve 18:00 (Açılış ve Kapanış)
+    - cron: '*/30 07-16 * * 1-5' # Hafta içi, borsa saatlerinde her 30 dk bir
   workflow_dispatch:
 
 jobs:
-  run-alpha:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - name: Kodlari Cek
+        uses: actions/checkout@v3
+
+      - name: Python 3.10 Kur
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.10'
           cache: 'pip'
-      - run: pip install -r requirements.txt
-      - env:
+
+      - name: Kutuphaneleri Yukle
+        run: pip install -r requirements.txt
+
+      - name: Botu Calistir
+        env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         run: python bot.py
