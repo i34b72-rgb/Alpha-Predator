@@ -64,4 +64,5 @@ async def ana_islem():
 # --- DÜZELTİLEN KISIM: AWAIT HATASI ÇÖZÜMÜ ---
 if __name__ == "__main__":
     # GitHub ve yerel bilgisayar için en güvenli çalıştırma yöntemi
+    import asyncio
     asyncio.run(ana_islem())
