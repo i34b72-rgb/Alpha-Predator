@@ -1,30 +1,33 @@
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
 import asyncio
 import os
 from telegram import Bot
 
 # --- AYARLAR ---
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
-MY_ID = 750480616  # BURAYA KENDİ ID NUMARANI YAZ!
-HISSELER = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "SASA.IS", "BTC-USD"]
+MY_ID = 750480616 # Kendi ID numaranı yaz
+HISSELER = ["THYAO.IS", "EREGL.IS", "ASELS.IS", "BTC-USD"]
 
-async def alpha_analiz(bot, sembol):
-    """Her hisseyi tek tek analiz eden ve sinyal varsa mesaj atan fonksiyon."""
+def rsi_hesapla(series, period=14):
+    """Pandas-ta olmadan manuel RSI hesaplar."""
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (10 + rs)) # Basit RSI formülü
+
+async def analiz_et(bot, sembol):
     try:
         hisse = yf.Ticker(sembol)
-        # Analiz için yeterli veri (100 gün) çekiyoruz
         df = hisse.history(period="100d")
-        
-        if len(df) < 30:
-            print(f"⚠️ {sembol} için yeterli veri yok.")
-            return
+        if len(df) < 30: return
 
-        # Teknik Göstergeler (RSI ve Hareketli Ortalama)
-        df['RSI'] = ta.rsi(df['Close'], length=14)
-        df['SMA20'] = ta.sma(df['Close'], length=20)
-        
+        # RSI Hesapla (Kendi fonksiyonumuzla)
+        df['RSI'] = rsi_hesapla(df['Close'])
+        # 20 Günlük Ortalama
+        df['SMA20'] = df['Close'].rolling(window=20).mean()
+
         son_fiyat = df['Close'].iloc[-1]
         son_rsi = df['RSI'].iloc[-1]
         son_sma = df['SMA20'].iloc[-1]
@@ -32,37 +35,21 @@ async def alpha_analiz(bot, sembol):
         onceki_sma = df['SMA20'].iloc[-2]
 
         mesaj = ""
-        # STRATEJİ 1: RSI 35 Altı (Aşırı Ucuz/Fırsat)
         if son_rsi <= 35:
-            mesaj = f"🚨 <b>{sembol} - FIRSAT BÖLGESİ</b>\n💰 Fiyat: {son_fiyat:.2f}\n📉 RSI: {son_rsi:.1f} (Aşırı Satım)"
-
-        # STRATEJİ 2: Golden Cross / SMA Kırılımı
+            mesaj = f"🚨 <b>{sembol} - FIRSAT</b>\nFiyat: {son_fiyat:.2f}\nRSI: {son_rsi:.1f}"
         elif son_fiyat > son_sma and onceki_fiyat <= onceki_sma:
-            mesaj = f"🚀 <b>{sembol} - TREND BAŞLADI</b>\n💰 Fiyat: {son_fiyat:.2f}\n📈 20 Günlük Ortalama Yukarı Kırıldı!"
+            mesaj = f"🚀 <b>{sembol} - YÜKSELİŞ</b>\nFiyat: {son_fiyat:.2f}\nSMA20 yukarı kırıldı!"
 
         if mesaj:
             await bot.send_message(chat_id=MY_ID, text=mesaj, parse_mode='HTML')
-            print(f"✅ {sembol} için sinyal gönderildi.")
-            
     except Exception as e:
-        print(f"❌ {sembol} hatası: {str(e)}")
+        print(f"Hata {sembol}: {e}")
 
 async def ana_islem():
-    """Botun ana döngüsü."""
-    if not TOKEN:
-        print("🔴 HATA: TELEGRAM_TOKEN GitHub Secrets içinde bulunamadı!")
-        return
-
+    if not TOKEN: return
     bot = Bot(token=TOKEN)
-    print("🚀 Borsa analizi başlatılıyor...")
-    
-    # Tüm hisseleri aynı anda (paralel) tara
-    tasks = [alpha_analiz(bot, s) for s in HISSELER]
+    tasks = [analiz_et(bot, s) for s in HISSELER]
     await asyncio.gather(*tasks)
-    print("🏁 Analiz tamamlandı.")
 
-# --- DÜZELTİLEN KISIM: AWAIT HATASI ÇÖZÜMÜ ---
 if __name__ == "__main__":
-    # GitHub ve yerel bilgisayar için en güvenli çalıştırma yöntemi
-    import asyncio
     asyncio.run(ana_islem())
