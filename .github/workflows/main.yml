@@ -1,4 +1,4 @@
-name: Borsa_Alpha_Predator
+name: Borsa_Botu
 on:
   schedule:
     - cron: '*/30 07-16 * * 1-5'
@@ -8,17 +8,13 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-      - name: Kodlari Cek
-        uses: actions/checkout@v3
-
-      - name: Python 3.11 Kur
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
           cache: 'pip'
-
-      - name: Kutuphaneleri Yukle
-        run: |
-          python -m pip install --upgrade pip
+      - run: |
           pip install pandas yfinance python-telegram-bot
-          pip install pandas-ta --pre  # '--pre' komutu geliştirme sürümlerini bulmasını sağlar
+      - env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: python bot.py
