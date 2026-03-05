@@ -15,8 +15,9 @@ jobs:
           cache: 'pip'
       - name: Kütüphaneleri Yükle
         run: pip install -r requirements.txt
-      - name: Botu Çalıştır
+      - name: Botu Calistir
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          GSPREAD_SERVICE_ACCOUNT: ${{ secrets.GSPREAD_SERVICE_ACCOUNT }} # BU SATIR EKSİK!
+          GSPREAD_SERVICE_ACCOUNT: ${{ secrets.GSPREAD_SERVICE_ACCOUNT }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python bot.py
