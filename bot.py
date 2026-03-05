@@ -10,12 +10,18 @@ from telegram import Bot
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 MY_ID = 750480616 # Kendi ID numaranı buraya yaz!
 
-# BIST 100 TAM LİSTE (Örnek bir grup, tamamını tarar)
+# BIST 100 GENİŞLETİLMİŞ TARAMA LİSTESİ
 BIST100 = [
     "THYAO.IS", "EREGL.IS", "ASELS.IS", "SASA.IS", "KCHOL.IS", "SISE.IS", "AKBNK.IS",
     "GARAN.IS", "TUPRS.IS", "BIMAS.IS", "ISCTR.IS", "YKBNK.IS", "SAHOL.IS", "HEKTS.IS",
-    "PGSUS.IS", "EKGYO.IS", "EREGL.IS", "PETKM.IS", "TOASO.IS", "ARCLK.IS", "FROTO.IS"
-    # Buraya BIST100'ün diğer kodlarını da ekleyebilirsin.
+    "PGSUS.IS", "EKGYO.IS", "PETKM.IS", "TOASO.IS", "ARCLK.IS", "FROTO.IS", "TCELL.IS",
+    "TKFEN.IS", "TTKOM.IS", "KOZAL.IS", "GUBRF.IS", "HALKB.IS", "VAKBN.IS", "DOHOL.IS",
+    "SKBNK.IS", "TSKB.IS", "ALARK.IS", "ARDYZ.IS", "BERA.IS", "CANTE.IS", "CIMSA.IS",
+    "DOAS.IS", "ECILC.IS", "EGEEN.IS", "ENJSA.IS", "ENKAI.IS", "GESAN.IS", "GLYHO.IS",
+    "GSDHO.IS", "IPEKE.IS", "ISGYO.IS", "JANTS.IS", "KARSN.IS", "KONTR.IS", "KORDS.IS",
+    "KRDMD.IS", "MGROS.IS", "ODAS.IS", "OTKAR.IS", "OYAKC.IS", "QUAGR.IS", "REEDR.IS",
+    "SMRTG.IS", "SOKM.IS", "TAVHL.IS", "TKNSA.IS", "TMSN.IS", "TRGYO.IS", "TURSG.IS",
+    "ULKER.IS", "VESBE.IS", "VESTL.IS", "ZOREN.IS", "EUPWR.IS", "ASTOR.IS", "ALFAS.IS"
 ]
 
 def rsi_hesapla(series, period=14):
@@ -25,59 +31,73 @@ def rsi_hesapla(series, period=14):
     rs = gain / (loss + 1e-9)
     return 100 - (100 / (1 + rs))
 
-async def haber_bul(sembol):
-    """Hisseye özel borsa haberlerini tarar."""
-    temiz_ad = sembol.replace(".IS", "")
-    query = urllib.parse.quote(f"{temiz_ad} hisse haber")
-    url = f"https://news.google.com/rss/search?q={query}&hl=tr&gl=TR&ceid=TR:tr"
-    # Şimdilik link olarak mesajda sunacağız
-    return f"🔍 <a href='{url}'>{temiz_ad} Son Haberler için Tıkla</a>"
-
-async def analiz_ve_rapor(bot, sembol):
+async def rapor_olustur_ve_gonder(bot, sembol, df):
     try:
-        df = yf.Ticker(sembol).history(period="60d")
-        if len(df) < 20: return
+        son = df.iloc[-1]
+        temiz_ad = sembol.replace(".IS", "")
+        
+        # Grafik Çizimi
+        plt.style.use('dark_background') # Daha profesyonel görünüm
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(df.index[-25:], df['Close'][-25:], marker='o', linestyle='-', color='#00ff00', label='Fiyat')
+        
+        # Grafik üzerine fiyat etiketleri ve başlık
+        plt.title(f"{temiz_ad} - Teknik Analiz Raporu", fontsize=14, color='white')
+        plt.grid(True, color='gray', linestyle='--', alpha=0.5)
+        
+        # Sağ üst köşeye fiyat bilgisini yazdır (Grafik içinde)
+        info_text = f"Son Fiyat: {son['Close']:.2f} TL\nRSI: {son['RSI']:.1f}"
+        plt.text(0.02, 0.95, info_text, transform=ax.transAxes, fontsize=12, 
+                 verticalalignment='top', bbox=dict(boxstyle='round', facecolor='black', alpha=0.5))
+
+        dosya_adi = f"{temiz_ad}.png"
+        plt.savefig(dosya_adi, bbox_inches='tight')
+        plt.close()
+
+        # Haber linki
+        query = urllib.parse.quote(f"{temiz_ad} hisse haber")
+        haber_url = f"https://news.google.com/rss/search?q={query}&hl=tr&gl=TR&ceid=TR:tr"
+
+        caption = (f"🎯 <b>{temiz_ad} Sinyal Analizi</b>\n\n"
+                   f"💰 Güncel Fiyat: {son['Close']:.2f} TL\n"
+                   f"📊 RSI Seviyesi: {son['RSI']:.1f}\n"
+                   f"📢 Durum: <b>{'Uzatılmış Alım Fırsatı' if son['RSI'] < 35 else 'Trend Takibi'}</b>\n\n"
+                   f"📰 <a href='{haber_url}'>Son Dakika Haberleri İçin Tıkla</a>")
+
+        with open(dosya_adi, 'rb') as photo:
+            await bot.send_photo(chat_id=MY_ID, photo=photo, caption=caption, parse_mode='HTML')
+        
+        os.remove(dosya_adi)
+    except Exception as e:
+        print(f"Rapor hatası ({sembol}): {e}")
+
+async def analiz_et(bot, sembol):
+    try:
+        hisse = yf.Ticker(sembol)
+        df = hisse.history(period="60d")
+        if len(df) < 25: return
 
         df['RSI'] = rsi_hesapla(df['Close'])
-        df['SMA20'] = df['Close'].rolling(window=20).mean()
         son = df.iloc[-1]
         
-        # --- STRATEJİ: RSI 35 ALTI (UCUZ) VEYA SMA KIRILIMI ---
-        if son['RSI'] <= 35 or (son['Close'] > son['SMA20'] and df['Close'].iloc[-2] <= df['SMA20'].iloc[-2]):
-            durum = "📉 AŞIRI SATIM (UCUZ)" if son['RSI'] <= 35 else "🚀 TREND YUKARI KIRILDI"
-            haber_linki = await haber_bul(sembol)
+        # Filtre: RSI 40'ın altındaysa (Toparlanma beklenen bölge)
+        if son['RSI'] <= 40:
+            await rapor_olustur_ve_gonder(bot, sembol, df)
             
-            mesaj = (f"🎯 <b>{sembol} SİNYAL YAKALANDI!</b>\n\n"
-                     f"💰 Fiyat: {son['Close']:.2f} TL\n"
-                     f"📊 RSI: {son['RSI']:.1f}\n"
-                     f"📢 Durum: {durum}\n\n"
-                     f"📰 <b>Haber Analizi:</b>\n{haber_linki}")
-            
-            await bot.send_message(chat_id=MY_ID, text=mesaj, parse_mode='HTML', disable_web_page_preview=True)
-            
-            # Grafik çizimi
-            plt.figure(figsize=(8, 4))
-            plt.plot(df.index[-20:], df['Close'][-20:], label='Fiyat', color='blue')
-            plt.title(f"{sembol} - Son 20 Gün")
-            plt.grid(True)
-            plt.savefig(f"{sembol}.png")
-            plt.close()
-            
-            with open(f"{sembol}.png", 'rb') as p:
-                await bot.send_photo(chat_id=MY_ID, photo=p)
-            os.remove(f"{sembol}.png")
-
     except Exception as e:
-        print(f"{sembol} hatası: {e}")
+        print(f"{sembol} tarama hatası: {e}")
 
 async def ana_islem():
     if not TOKEN: return
     bot = Bot(token=TOKEN)
-    await bot.send_message(chat_id=MY_ID, text="🔎 <b>BIST 100 Tam Tarama Başlatıldı...</b>", parse_mode='HTML')
+    await bot.send_message(chat_id=MY_ID, text="🔎 <b>BIST 100 Tam Tarama Başladı...</b>\n<i>Fırsatlar raporlanıyor.</i>", parse_mode='HTML')
     
-    # Tüm listeyi paralel olarak tara (Hız için)
-    tasks = [analiz_ve_rapor(bot, s) for s in BIST100]
-    await asyncio.gather(*tasks)
+    # 10'arlı gruplar halinde tara (Sistem kilitlenmesin diye)
+    for i in range(0, len(BIST100), 10):
+        grup = BIST100[i:i+10]
+        tasks = [analiz_et(bot, s) for s in grup]
+        await asyncio.gather(*tasks)
+        await asyncio.sleep(1) # Yahoo Finance banlanmaması için kısa ara
 
 if __name__ == "__main__":
     asyncio.run(ana_islem())
