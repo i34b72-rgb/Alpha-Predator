@@ -85,15 +85,25 @@ async def analiz_ve_kaydet(bot, sheet, sembol, sektor):
         print(f"Hata {sembol}: {e}")
 
 async def ana_islem():
-    if not TOKEN: return
-    bot = Bot(token=TOKEN)
-    sheet = tabloya_baglan()
-    
-    await bot.send_message(chat_id=MY_ID, text="🔎 <b>Sektörel Tarama ve Tablo Kaydı Başladı...</b>", parse_mode='HTML')
-    
-    for sektor, liste in SEKTORLER.items():
-        tasks = [analiz_ve_kaydet(bot, sheet, s, sektor) for s in liste]
-        await asyncio.gather(*tasks)
+    # Kasanın içini kontrol ediyoruz
+    if TOKEN is None:
+        print("❌ HATA: TELEGRAM_TOKEN kasada bulunamadı!")
+        return
+    if SHEET_JSON is None:
+        print("❌ HATA: GSPREAD_SERVICE_ACCOUNT kasada bulunamadı!")
+        return
+
+    try:
+        bot = Bot(token=TOKEN)
+        sheet = tabloya_baglan()
+        print("✅ Bağlantılar başarılı! Tarama başlıyor...")
+        
+        for sektor, liste in SEKTORLER.items():
+            tasks = [analiz_ve_kaydet(bot, sheet, s, sektor) for s in liste]
+            await asyncio.gather(*tasks)
+            
+    except Exception as e:
+        print(f"💥 Çalışma anı hatası: {e}")
 
 if __name__ == "__main__":
     asyncio.run(ana_islem())
