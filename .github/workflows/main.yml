@@ -1,4 +1,4 @@
-name: Borsa_Botu
+name: Borsa_Alpha_Predator
 on:
   schedule:
     - cron: '*/30 07-16 * * 1-5'
@@ -13,8 +13,9 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-      - run: |
-          pip install pandas yfinance python-telegram-bot
-      - env:
+      - name: Kütüphaneleri Yükle
+        run: pip install -r requirements.txt
+      - name: Botu Çalıştır
+        env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         run: python bot.py
