@@ -1,3 +1,4 @@
+pandas
 yfinance
 python-telegram-bot
 pandas_ta
