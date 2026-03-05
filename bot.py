@@ -9,35 +9,30 @@ from oauth2client.service_account import ServiceAccountCredentials
 from telegram import Bot
 from datetime import datetime
 
-# --- GÜVENLİK AYARLARI ---
-TOKEN = os.environ.get('TELEGRAM_TOKEN')
-MY_ID = 750480616  # BURAYA KENDİ ID NUMARANI YAZ
-SHEET_JSON = os.environ.get('GSPREAD_SERVICE_ACCOUNT')
+# --- AYARLAR ---
+TOKEN = os.getenv('TELEGRAM_TOKEN')
+MY_ID = 750480616 # Kendi ID numaranı yaz!
+SHEET_JSON = os.getenv('GSPREAD_SERVICE_ACCOUNT')
 
-# SEKTÖREL LİSTE
 SEKTORLER = {
-    "HAVACILIK": ["THYAO.IS", "PGSUS.IS", "TAVHL.IS"],
-    "BANKA": ["AKBNK.IS", "GARAN.IS", "ISCTR.IS", "YKBNK.IS"],
-    "ENERJI": ["ASTOR.IS", "EUPWR.IS", "ALFAS.IS", "SASA.IS"],
-    "DEMIR-CELIK": ["EREGL.IS", "KRDMD.IS"],
-    "HOLDING": ["KCHOL.IS", "SAHOL.IS"]
+    "HAVACILIK": ["THYAO.IS", "PGSUS.IS"],
+    "BANKA": ["AKBNK.IS", "GARAN.IS", "ISCTR.IS"],
+    "ENERJI": ["ASTOR.IS", "SASA.IS", "EUPWR.IS"],
+    "DEMIR-CELIK": ["EREGL.IS", "KRDMD.IS"]
 }
-
-SHEET_JSON = os.getenv('GSPREAD_SERVICE_ACCOUNT') 
 
 def tabloya_baglan():
     if not SHEET_JSON:
-        # Hata mesajını daha detaylı görelim
-        raise ValueError("GSPREAD_SERVICE_ACCOUNT kasadan okunamadı! YAML dosyanızı kontrol edin.")
+        raise ValueError("HATA: GSPREAD_SERVICE_ACCOUNT GitHub Secrets'ta bulunamadı!")
     
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = json.loads(SHEET_JSON)
+    creds_dict = json.loads(SHEET_JSON.strip())
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
+    # E-Tablo adının "Borsa_Sinyal_Takip" olduğundan emin ol
     return client.open("Borsa_Sinyal_Takip").sheet1
 
 def rsi_hesapla(series, period=14):
-    """Pandas-ta olmadan manuel RSI hesaplar."""
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
@@ -51,60 +46,58 @@ async def analiz_ve_kaydet(bot, sheet, sembol, sektor):
 
         df['RSI'] = rsi_hesapla(df['Close'])
         son = df.iloc[-1]
-        son_fiyat = round(son['Close'], 2)
-        son_rsi = round(son['RSI'], 1)
+        fiyat = round(son['Close'], 2)
+        rsi = round(son['RSI'], 1)
 
-        # STRATEJİ: RSI 35 ve altı (Alım Fırsatı)
-        if son_rsi <= 35:
+        # TEST İÇİN: Gerçek sinyal RSI <= 35'tir. 
+        # Hemen veri görmek istersen burayı geçici olarak 70 yapabilirsin.
+        if rsi <= 35:
             tarih = datetime.now().strftime("%d/%m/%Y %H:%M")
             
-            # 1. Google Sheets Kaydı
-            sheet.append_row([tarih, sektor, sembol, son_fiyat, son_rsi, "FIRSAT"])
+            # 1. GOOGLE SHEETS KAYDI (ADIM 2 PERFORMANS ALTYAPISI)
+            sheet.append_row([tarih, sektor, sembol, fiyat, rsi, "BEKLEMEDE"])
 
-            # 2. Grafik Oluşturma
+            # 2. GRAFİK HAZIRLAMA
             plt.style.use('dark_background')
             plt.figure(figsize=(10, 5))
-            plt.plot(df.index[-25:], df['Close'][-25:], color='#00ff00', marker='o')
-            plt.title(f"{sembol} - RSI: {son_rsi}")
-            plt.grid(True, alpha=0.3)
+            plt.plot(df.index[-25:], df['Close'][-25:], color='#00ff00', marker='o', linewidth=2)
+            plt.title(f"{sembol} - RSI: {rsi} - Fiyat: {fiyat}TL")
+            plt.grid(True, alpha=0.2)
             
             dosya = f"{sembol}.png"
             plt.savefig(dosya)
             plt.close()
 
-            # 3. Telegram Mesajı
-            caption = (f"🎯 <b>{sembol} ({sektor})</b>\n\n"
-                       f"💰 Fiyat: {son_fiyat} TL\n"
-                       f"📊 RSI: {son_rsi}\n"
-                       f"✅ Veri Google Sheets'e kaydedildi.")
+            # 3. TELEGRAM MESAJI
+            caption = (f"🎯 <b>{sembol} ({sektor}) SİNYAL!</b>\n\n"
+                       f"💰 Giriş Fiyatı: {fiyat} TL\n"
+                       f"📊 RSI Seviyesi: {rsi}\n"
+                       f"📝 <i>Veri performans takibi için Google Sheets'e işlendi.</i>")
             
             with open(dosya, 'rb') as p:
                 await bot.send_photo(chat_id=MY_ID, photo=p, caption=caption, parse_mode='HTML')
             os.remove(dosya)
 
     except Exception as e:
-        print(f"Hata {sembol}: {e}")
+        print(f"Hata ({sembol}): {e}")
 
 async def ana_islem():
-    # Kasanın içini kontrol ediyoruz
-    if TOKEN is None:
-        print("❌ HATA: TELEGRAM_TOKEN kasada bulunamadı!")
+    if not TOKEN or not SHEET_JSON:
+        print("❌ Eksik Yapılandırma! Secrets kısmını kontrol edin.")
         return
-    if SHEET_JSON is None:
-        print("❌ HATA: GSPREAD_SERVICE_ACCOUNT kasada bulunamadı!")
-        return
-
+        
+    bot = Bot(token=TOKEN)
     try:
-        bot = Bot(token=TOKEN)
         sheet = tabloya_baglan()
-        print("✅ Bağlantılar başarılı! Tarama başlıyor...")
+        await bot.send_message(chat_id=MY_ID, text="🐺 <b>Alpha Predator V3 Aktif!</b>\nSektörel tarama ve kayıt başlıyor...")
         
         for sektor, liste in SEKTORLER.items():
             tasks = [analiz_ve_kaydet(bot, sheet, s, sektor) for s in liste]
             await asyncio.gather(*tasks)
+            await asyncio.sleep(1) # Banlanmamak için kısa ara
             
     except Exception as e:
-        print(f"💥 Çalışma anı hatası: {e}")
+        print(f"Bağlantı Hatası: {e}")
 
 if __name__ == "__main__":
     asyncio.run(ana_islem())
