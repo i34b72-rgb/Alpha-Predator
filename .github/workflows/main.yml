@@ -1,7 +1,7 @@
 name: Borsa_Alpha_Predator
 on:
   schedule:
-    - cron: '*/30 07-16 * * 1-5' # Hafta içi, borsa saatlerinde her 30 dk bir
+    - cron: '*/30 07-16 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -11,14 +11,16 @@ jobs:
       - name: Kodlari Cek
         uses: actions/checkout@v3
 
-      - name: Python 3.10 Kur
+      - name: Python 3.11 Kur
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11' # Sürümü yükselttik
           cache: 'pip'
 
       - name: Kutuphaneleri Yukle
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Botu Calistir
         env:
