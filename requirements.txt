@@ -7,3 +7,4 @@ oauth2client
 google-generativeai
 lxml
 requests
+beautifulsoup4
