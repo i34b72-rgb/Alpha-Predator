@@ -77,7 +77,7 @@ async def analiz_et(bot, sheet, sembol):
         fiyat, rsi = round(son['Close'], 2), round(son['RSI'], 1)
 
         # STRATEJİ: RSI 35 ve altı (Alım fırsatı bölgesi)
-        if rsi <= 35:
+        if rsi > 0:
             tarih = datetime.now().strftime("%d/%m/%Y %H:%M")
             sheet.append_row([tarih, "BIST100", sembol, fiyat, rsi, "BEKLEMEDE"])
             
