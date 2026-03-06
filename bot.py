@@ -23,9 +23,16 @@ if GEMINI_KEY:
 
 # BIST 100 GENİŞ LİSTE
 SEKTORLER = {
-    "LOKOMOTIF": ["THYAO.IS", "EREGL.IS", "TUPRS.IS", "BIMAS.IS"],
-    "BANKA": ["AKBNK.IS", "GARAN.IS", "ISCTR.IS"],
-    "ENERJI": ["ASTOR.IS", "SASA.IS", "EUPWR.IS"]
+    "BANKA": ["AKBNK.IS", "GARAN.IS", "ISCTR.IS", "YKBNK.IS", "VAKBN.IS", "HALKB.IS", "ALBRK.IS", "SKBNK.IS", "QNBFB.IS"],
+    "HOLDING": ["KCHOL.IS", "SAHOL.IS", "DOHOL.IS", "ALARK.IS", "AGHOL.IS", "GSDHO.IS", "TKFEN.IS", "BERA.IS"],
+    "ENERJI": ["ASTOR.IS", "SASA.IS", "EUPWR.IS", "ALFAS.IS", "ENJSA.IS", "KONTR.IS", "ODAS.IS", "ZOREN.IS", "AYDEM.IS", "CWENE.IS", "MAGEN.IS", "GWIND.IS"],
+    "HAVACILIK": ["THYAO.IS", "PGSUS.IS", "TAVHL.IS", "DOCO.IS"],
+    "DEMIR-CELIK": ["EREGL.IS", "KRDMD.IS", "BRSAN.IS", "ISDMR.IS"],
+    "GAYRIMENKUL": ["EKGYO.IS", "SNGYO.IS", "TRGYO.IS", "ASGYO.IS", "VKGYO.IS", "PNSGY.IS"],
+    "TEKNOLOJI-YAZILIM": ["ASELS.IS", "ARDYZ.IS", "REEDR.IS", "MIATK.IS", "YEOTK.IS", "SDTTR.IS"],
+    "GIDA-PERAKENDE": ["BIMAS.IS", "MGROS.IS", "SOKM.IS", "AEFES.IS", "CCOLA.IS", "TATGD.IS", "ULUÖN.IS"],
+    "SANAYI-OTOMOTIV": ["FROTO.IS", "TOASO.IS", "OTKAR.IS", "ASUZU.IS", "TTRAK.IS", "DOAS.IS", "BRISA.IS"],
+    "DIGER-GUCLU": ["TUPRS.IS", "SISE.IS", "PETKM.IS", "HEKTS.IS", "ENKAI.IS", "KONTROL.IS"]
 }
 
 def tabloya_baglan():
@@ -53,7 +60,7 @@ async def analiz_et(bot, sheet, sembol, sektor):
         fiyat, rsi = round(son['Close'], 2), round(son['RSI'], 1)
 
         # TEST İÇİN: Sinyal gelsin diye RSI > 0 yaptık
-        if rsi > 0:
+        if rsi <= 35:
             tarih = datetime.now().strftime("%d/%m/%Y %H:%M")
             sheet.append_row([tarih, sektor, sembol, fiyat, rsi, "TEST"])
             
