@@ -4,3 +4,5 @@ python-telegram-bot
 matplotlib
 gspread
 oauth2client
+google-generativeai
+lxml
