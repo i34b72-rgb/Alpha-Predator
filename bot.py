@@ -21,9 +21,13 @@ if GEMINI_KEY:
     ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 SEKTORLER = {
-    "HAVACILIK": ["THYAO.IS", "PGSUS.IS"],
-    "BANKA": ["AKBNK.IS", "GARAN.IS"],
-    "ENERJI": ["ASTOR.IS", "SASA.IS"]
+    "HAVACILIK": ["THYAO.IS", "PGSUS.IS", "TAVHL.IS", "DOCO.IS"],
+    "BANKA": ["AKBNK.IS", "GARAN.IS", "ISCTR.IS", "YKBNK.IS", "HALKB.IS", "VAKBN.IS"],
+    "ENERJI": ["ASTOR.IS", "SASA.IS", "EUPWR.IS", "ALFAS.IS", "ENJSA.IS", "KONTR.IS", "ODAS.IS", "ZOREN.IS"],
+    "DEMIR-CELIK": ["EREGL.IS", "KRDMD.IS", "KARDM.IS", "İSDEM.IS"],
+    "PERAKENDE": ["BIMAS.IS", "MGROS.IS", "SOKM.IS", "TKNSA.IS"],
+    "HOLDING": ["KCHOL.IS", "SAHOL.IS", "DOHOL.IS", "ALARK.IS", "AGHOL.IS"],
+    "TEKNOLOJI": ["ASELS.IS", "ARDYZ.IS", "REEDR.IS", "MIATK.IS"]
 }
 
 def tabloya_baglan():
