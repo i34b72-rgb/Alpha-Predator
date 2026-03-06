@@ -62,7 +62,7 @@ async def analiz_et(bot, sheet, sembol, sektor):
         son = df.iloc[-1]
         fiyat, rsi = round(son['Close'], 2), round(son['RSI'], 1)
 
-        if rsi <= 35:
+        if rsi > 0:
             tarih = datetime.now().strftime("%d/%m/%Y %H:%M")
             sheet.append_row([tarih, sektor, sembol, fiyat, rsi, "BEKLEMEDE"])
             yorum = await ai_yorum_al(sembol, fiyat, rsi)
