@@ -12,7 +12,8 @@ from datetime import datetime
 
 # --- AYARLAR ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
-MY_ID = 12345678  # Kendi ID numaranı yazmayı unutma!
+# DİKKAT: Buraya kendi sayısal ID'ni yaz (Örn: 12345678)
+MY_ID = 750480616 
 SHEET_JSON = os.getenv('GSPREAD_SERVICE_ACCOUNT')
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 
@@ -20,14 +21,11 @@ if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
     ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
+# BIST 100 GENİŞ LİSTE
 SEKTORLER = {
-    "HAVACILIK": ["THYAO.IS", "PGSUS.IS", "TAVHL.IS", "DOCO.IS"],
-    "BANKA": ["AKBNK.IS", "GARAN.IS", "ISCTR.IS", "YKBNK.IS", "HALKB.IS", "VAKBN.IS"],
-    "ENERJI": ["ASTOR.IS", "SASA.IS", "EUPWR.IS", "ALFAS.IS", "ENJSA.IS", "KONTR.IS", "ODAS.IS", "ZOREN.IS"],
-    "DEMIR-CELIK": ["EREGL.IS", "KRDMD.IS", "KARDM.IS", "İSDEM.IS"],
-    "PERAKENDE": ["BIMAS.IS", "MGROS.IS", "SOKM.IS", "TKNSA.IS"],
-    "HOLDING": ["KCHOL.IS", "SAHOL.IS", "DOHOL.IS", "ALARK.IS", "AGHOL.IS"],
-    "TEKNOLOJI": ["ASELS.IS", "ARDYZ.IS", "REEDR.IS", "MIATK.IS"]
+    "LOKOMOTIF": ["THYAO.IS", "EREGL.IS", "TUPRS.IS", "BIMAS.IS"],
+    "BANKA": ["AKBNK.IS", "GARAN.IS", "ISCTR.IS"],
+    "ENERJI": ["ASTOR.IS", "SASA.IS", "EUPWR.IS"]
 }
 
 def tabloya_baglan():
@@ -46,14 +44,6 @@ def rsi_hesapla(series, period=14):
     rs = gain / (loss + 1e-9)
     return 100 - (100 / (1 + rs))
 
-async def ai_yorum_al(sembol, fiyat, rsi):
-    if not GEMINI_KEY: return "AI yorumu kapalı."
-    prompt = f"{sembol} hissesi {fiyat} TL ve RSI {rsi}. Kısa teknik yorum yap."
-    try:
-        response = ai_model.generate_content(prompt)
-        return response.text
-    except: return "Analiz başarısız."
-
 async def analiz_et(bot, sheet, sembol, sektor):
     try:
         df = yf.Ticker(sembol).history(period="60d")
@@ -62,31 +52,37 @@ async def analiz_et(bot, sheet, sembol, sektor):
         son = df.iloc[-1]
         fiyat, rsi = round(son['Close'], 2), round(son['RSI'], 1)
 
+        # TEST İÇİN: Sinyal gelsin diye RSI > 0 yaptık
         if rsi > 0:
             tarih = datetime.now().strftime("%d/%m/%Y %H:%M")
-            sheet.append_row([tarih, sektor, sembol, fiyat, rsi, "BEKLEMEDE"])
-            yorum = await ai_yorum_al(sembol, fiyat, rsi)
-
+            sheet.append_row([tarih, sektor, sembol, fiyat, rsi, "TEST"])
+            
             plt.style.use('dark_background')
             plt.figure(figsize=(8, 4))
             plt.plot(df.index[-20:], df['Close'][-20:], color='#00ff00', marker='o')
-            plt.title(f"{sembol} Analiz")
+            plt.title(f"{sembol} - {fiyat} TL")
             plt.savefig(f"{sembol}.png")
             plt.close()
 
-            cap = f"🎯 <b>{sembol} SİNYAL!</b>\nFiyat: {fiyat} TL | RSI: {rsi}\n\n🤖 <b>AI:</b> {yorum}"
+            cap = f"🎯 <b>{sembol} SİNYAL!</b>\nFiyat: {fiyat} TL | RSI: {rsi}"
             with open(f"{sembol}.png", 'rb') as p:
                 await bot.send_photo(chat_id=MY_ID, photo=p, caption=cap, parse_mode='HTML')
             os.remove(f"{sembol}.png")
-    except Exception as e: print(f"Hata {sembol}: {e}")
+    except Exception as e:
+        print(f"Hata {sembol}: {e}")
 
 async def ana_islem():
-    if not TOKEN or not SHEET_JSON: return
+    if not TOKEN or not SHEET_JSON:
+        print("Eksik Ayar!")
+        return
     bot = Bot(token=TOKEN)
-    sheet = tabloya_baglan()
-    for sektor, liste in SEKTORLER.items():
-        tasks = [analiz_et(bot, sheet, s, sektor) for s in liste]
-        await asyncio.gather(*tasks)
+    try:
+        sheet = tabloya_baglan()
+        for sektor, liste in SEKTORLER.items():
+            tasks = [analiz_et(bot, sheet, s, sektor) for s in liste]
+            await asyncio.gather(*tasks)
+    except Exception as e:
+        print(f"Bağlantı Hatası: {e}")
 
 if __name__ == "__main__":
     asyncio.run(ana_islem())
