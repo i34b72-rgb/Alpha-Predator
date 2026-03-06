@@ -5,23 +5,17 @@ import asyncio
 import os
 import json
 import gspread
-import google.generativeai as genai
 from oauth2client.service_account import ServiceAccountCredentials
 from telegram import Bot
 from datetime import datetime
 
 # --- AYARLAR ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
-MY_ID = 750480616  # Kendi ID numaranı buraya yaz!
+MY_ID = 750480616  # Kendi ID numaranı yaz!
 SHEET_JSON = os.getenv('GSPREAD_SERVICE_ACCOUNT')
-GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 
-if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-    ai_model = genai.GenerativeModel('gemini-1.5-flash')
-
-# --- BIST 100 SABİT VE TAM LİSTE ---
-BIST100_HİSSELERİ = [
+# --- BIST 100 TAM LİSTE ---
+BIST100 = [
     "AEFES.IS", "AGHOL.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKFYE.IS", "AKSA.IS", "AKSEN.IS", "ALARK.IS", "ALBRK.IS",
     "ALFAS.IS", "ANSGR.IS", "ARCLK.IS", "ARDYZ.IS", "ASGYO.IS", "ASELS.IS", "ASTOR.IS", "AYDEM.IS", "BERA.IS", "BIMAS.IS",
     "BRSAN.IS", "BRYAT.IS", "BUCIM.IS", "CANTE.IS", "CCOLA.IS", "CIMSA.IS", "CWENE.IS", "DOAS.IS", "DOHOL.IS", "EGEEN.IS",
@@ -35,63 +29,87 @@ BIST100_HİSSELERİ = [
 ]
 
 def tabloya_baglan():
-    if not SHEET_JSON: raise ValueError("Secrets eksik!")
     creds_dict = json.loads(SHEET_JSON.strip())
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds).open("Borsa_Sinyal_Takip").sheet1
 
-def rsi_hesapla(series):
-    delta = series.diff()
+def teknik_analiz_yap(df):
+    """Kendi teknik analiz mantığımız: RSI + SMA20 + Hacim"""
+    # RSI Hesapla
+    delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / (loss + 1e-9)
-    return 100 - (100 / (1 + rs))
+    df['RSI'] = 100 - (100 / (1 + rs))
+    
+    # 20 Günlük Ortalama (SMA)
+    df['SMA20'] = df['Close'].rolling(window=20).mean()
+    
+    # Son Veriler
+    son = df.iloc[-1]
+    onceki = df.iloc[-2]
+    
+    rsi = round(son['RSI'], 1)
+    fiyat = round(son['Close'], 2)
+    sma20 = round(son['SMA20'], 2)
+    hacim_artisi = son['Volume'] > df['Volume'].tail(5).mean() # Son hacim 5 günlük ortalamadan yüksek mi?
 
-async def ai_yorum_al(sembol, fiyat, rsi):
-    if not GEMINI_KEY: return "AI Kapalı."
+    # SİNYAL KARARI
+    durum = "NÖTR"
+    if rsi <= 35 and fiyat < sma20:
+        durum = "GÜÇLÜ AL (UCUZ)"
+    elif rsi >= 70:
+        durum = "SATIŞ BÖLGESİ"
+        
+    return durum, rsi, fiyat, sma20
+
+async def analiz_ve_gonder(bot, sheet, sembol):
     try:
-        await asyncio.sleep(4) # Kotayı korumak için bekleme
-        res = ai_model.generate_content(f"{sembol} {fiyat} TL ve RSI {rsi}. 1 cümlelik çok kısa analiz yap.")
-        return res.text
-    except: return "AI yoğun."
+        data = yf.Ticker(sembol).history(period="60d")
+        if len(data) < 30: return
 
-async def analiz_et(bot, sheet, sembol):
-    try:
-        df = yf.Ticker(sembol).history(period="60d")
-        if len(df) < 20: return
-        df['RSI'] = rsi_hesapla(df['Close'])
-        son = df.iloc[-1]
-        fiyat, rsi = round(son['Close'], 2), round(son['RSI'], 1)
+        durum, rsi, fiyat, sma20 = teknik_analiz_yap(data)
 
-        # STRATEJİ: RSI 35 ve altı
-        if rsi <= 35:
+        # Sadece "GÜÇLÜ AL" sinyallerini bildiriyoruz
+        if durum == "GÜÇLÜ AL (UCUZ)":
             tarih = datetime.now().strftime("%d/%m/%Y %H:%M")
-            yorum = await ai_yorum_al(sembol, fiyat, rsi)
-            sheet.append_row([tarih, "BIST100", sembol, fiyat, rsi, "BEKLEMEDE"])
-            
+            sheet.append_row([tarih, "BIST100", sembol, fiyat, rsi, durum])
+
+            # Grafik Çizimi
             plt.style.use('dark_background')
-            plt.figure(figsize=(8, 4))
-            plt.plot(df.index[-20:], df['Close'][-20:], color='#00ff00', marker='o')
-            plt.title(f"{sembol} - {fiyat} TL")
-            plt.savefig(f"{sembol}.png")
+            plt.figure(figsize=(10, 5))
+            plt.plot(data.index[-30:], data['Close'][-30:], label='Fiyat', color='#00ff00')
+            plt.plot(data.index[-30:], data['SMA20'][-30:], label='SMA20', color='#ff9900', linestyle='--')
+            plt.title(f"{sembol} - {durum}")
+            plt.legend()
+            plt.grid(alpha=0.2)
+            
+            dosya = f"{sembol}.png"
+            plt.savefig(dosya)
             plt.close()
 
-            with open(f"{sembol}.png", 'rb') as p:
-                await bot.send_photo(chat_id=MY_ID, photo=p, caption=f"🎯 <b>{sembol}</b>\nFiyat: {fiyat}\nRSI: {rsi}\n🤖 {yorum}", parse_mode='HTML')
-            os.remove(f"{sembol}.png")
-    except: pass
+            mesaj = (f"🚀 <b>{sembol} - ALIM FIRSATI!</b>\n\n"
+                     f"💰 Fiyat: {fiyat} TL\n"
+                     f"📊 RSI: {rsi}\n"
+                     f"📉 20 Günlük Ort: {sma20} TL\n\n"
+                     f"✅ <i>Analiz: Fiyat ortalamanın altında ve RSI aşırı satım bölgesinde.</i>")
+            
+            with open(dosya, 'rb') as p:
+                await bot.send_photo(chat_id=MY_ID, photo=p, caption=mesaj, parse_mode='HTML')
+            os.remove(dosya)
+
+    except Exception as e:
+        print(f"{sembol} Hatası: {e}")
 
 async def ana_islem():
     bot = Bot(token=TOKEN)
     sheet = tabloya_baglan()
+    await bot.send_message(chat_id=MY_ID, text=f"🔍 <b>Kendi Analiz Motorumuz Başladı</b>\n{len(BIST100)} hisse taranıyor...")
     
-    # Bilgi mesajı
-    await bot.send_message(chat_id=MY_ID, text=f"🚀 <b>BIST 100 Taraması Başladı</b>\nToplam {len(BIST100_HİSSELERİ)} hisse inceleniyor...", parse_mode='HTML')
-    
-    for s in BIST100_HİSSELERİ:
-        await analiz_et(bot, sheet, s)
-        await asyncio.sleep(1.2) # Banlanma koruması
+    for s in BIST100:
+        await analiz_ve_gonder(bot, sheet, s)
+        await asyncio.sleep(0.5) # AI olmadığı için daha hızlı tarayabiliriz
 
 if __name__ == "__main__":
     asyncio.run(ana_islem())
