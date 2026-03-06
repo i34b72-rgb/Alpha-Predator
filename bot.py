@@ -6,15 +6,13 @@ import os
 import json
 import gspread
 import google.generativeai as genai
-import requests
-from bs4 import BeautifulSoup
 from oauth2client.service_account import ServiceAccountCredentials
 from telegram import Bot
 from datetime import datetime
 
 # --- AYARLAR ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
-MY_ID = 750480616  # Kendi ID numaranı yazmayı unutma!
+MY_ID = 750480616  # Kendi ID numaranı buraya yaz!
 SHEET_JSON = os.getenv('GSPREAD_SERVICE_ACCOUNT')
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
 
@@ -22,36 +20,26 @@ if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
     ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
-def guncel_bist100_cek():
-    """BIST 100 listesini çekmek için çoklu kaynak denemesi yapar."""
-    # 1. Kaynak: Wikipedia (Geliştirilmiş Header ile)
-    try:
-        url = "https://tr.wikipedia.org/wiki/BIST_100"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'lxml')
-        tablo = soup.find('table', {'class': 'wikitable'})
-        df = pd.read_html(str(tablo))[0]
-        kodlar = [str(kod).strip() + ".IS" for kod in df['Kod'].tolist() if len(str(kod)) <= 6]
-        if len(kodlar) > 50: return kodlar
-    except: pass
+# --- BIST 100 SABİT VE TAM LİSTE ---
+BIST100_HİSSELERİ = [
+    "AEFES.IS", "AGHOL.IS", "AKBNK.IS", "AKCNS.IS", "AKFGY.IS", "AKFYE.IS", "AKSA.IS", "AKSEN.IS", "ALARK.IS", "ALBRK.IS",
+    "ALFAS.IS", "ANSGR.IS", "ARCLK.IS", "ARDYZ.IS", "ASGYO.IS", "ASELS.IS", "ASTOR.IS", "AYDEM.IS", "BERA.IS", "BIMAS.IS",
+    "BRSAN.IS", "BRYAT.IS", "BUCIM.IS", "CANTE.IS", "CCOLA.IS", "CIMSA.IS", "CWENE.IS", "DOAS.IS", "DOHOL.IS", "EGEEN.IS",
+    "EKGYO.IS", "ENJSA.IS", "ENKAI.IS", "EREGL.IS", "EUPWR.IS", "FROTO.IS", "GARAN.IS", "GENIL.IS", "GESAN.IS", "GSDHO.IS",
+    "GUBRF.IS", "GWIND.IS", "HALKB.IS", "HEKTS.IS", "IPEKE.IS", "ISCTR.IS", "ISDMR.IS", "ISGYO.IS", "ISMEN.IS", "IZMDC.IS",
+    "KAYSE.IS", "KCHOL.IS", "KCAER.IS", "KONTR.IS", "KONYA.IS", "KORDS.IS", "KOZAL.IS", "KOZAA.IS", "KRDMD.IS", "MAVI.IS",
+    "MGROS.IS", "MIATK.IS", "ODAS.IS", "OTKAR.IS", "OYAKC.IS", "PENTA.IS", "PETKM.IS", "PGSUS.IS", "QUAGR.IS", "REEDR.IS",
+    "SAHOL.IS", "SASA.IS", "SAYAS.IS", "SDTTR.IS", "SISE.IS", "SKBNK.IS", "SMRTG.IS", "SNGYO.IS", "SOKM.IS", "TABGD.IS",
+    "TAVHL.IS", "TCELL.IS", "THYAO.IS", "TKFEN.IS", "TOASO.IS", "TSKB.IS", "TTKOM.IS", "TTRAK.IS", "TUPRS.IS", "TURSG.IS",
+    "ULKER.IS", "VAKBN.IS", "VESBE.IS", "VESTL.IS", "YEOTK.IS", "YKBNK.IS", "ZOREN.IS"
+]
 
-    # 2. Kaynak: Eğer yukarıdaki başarısız olursa alternatif liste (En popüler 100)
-    print("⚠️ Dinamik liste çekilemedi, manuel geniş liste yükleniyor...")
-    return [
-        "THYAO.IS", "EREGL.IS", "TUPRS.IS", "AKBNK.IS", "SISE.IS", "KCHOL.IS", "SASA.IS", "ASTOR.IS",
-        "GARAN.IS", "ISCTR.IS", "YKBNK.IS", "BIMAS.IS", "SAHOL.IS", "ASELS.IS", "TCELL.IS", "PETKM.IS",
-        "HEKTS.IS", "KOZAL.IS", "PGSUS.IS", "ARCLK.IS", "ENKAI.IS", "GUBRF.IS", "FROTO.IS", "TOASO.IS",
-        "EUPWR.IS", "KONTR.IS", "MIATK.IS", "YEOTK.IS", "REEDR.IS", "ODAS.IS", "ZOREN.IS" # Bu listeyi 100'e tamamlayabilirsin
-    ]
-
-# --- TABLO VE RSI FONKSİYONLARI AYNI KALIYOR ---
 def tabloya_baglan():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    if not SHEET_JSON: raise ValueError("Secrets eksik!")
     creds_dict = json.loads(SHEET_JSON.strip())
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    return client.open("Borsa_Sinyal_Takip").sheet1
+    return gspread.authorize(creds).open("Borsa_Sinyal_Takip").sheet1
 
 def rsi_hesapla(series):
     delta = series.diff()
@@ -60,11 +48,11 @@ def rsi_hesapla(series):
     rs = gain / (loss + 1e-9)
     return 100 - (100 / (1 + rs))
 
-async def ai_yorumla(sembol, fiyat, rsi):
-    if not GEMINI_KEY: return "AI Devre Dışı."
+async def ai_yorum_al(sembol, fiyat, rsi):
+    if not GEMINI_KEY: return "AI Kapalı."
     try:
-        await asyncio.sleep(4) # Rate limit koruması
-        res = ai_model.generate_content(f"{sembol} {fiyat} TL, RSI {rsi}. 1 cümlelik analiz yap.")
+        await asyncio.sleep(4) # Kotayı korumak için bekleme
+        res = ai_model.generate_content(f"{sembol} {fiyat} TL ve RSI {rsi}. 1 cümlelik çok kısa analiz yap.")
         return res.text
     except: return "AI yoğun."
 
@@ -76,13 +64,12 @@ async def analiz_et(bot, sheet, sembol):
         son = df.iloc[-1]
         fiyat, rsi = round(son['Close'], 2), round(son['RSI'], 1)
 
-        # TEST İÇİN: Gerçek kullanımda rsi <= 35 yap
+        # STRATEJİ: RSI 35 ve altı
         if rsi <= 35:
-            yorum = await ai_yorumla(sembol, fiyat, rsi)
             tarih = datetime.now().strftime("%d/%m/%Y %H:%M")
+            yorum = await ai_yorum_al(sembol, fiyat, rsi)
             sheet.append_row([tarih, "BIST100", sembol, fiyat, rsi, "BEKLEMEDE"])
             
-            # Grafik ve Telegram gönderimi (Önceki kodla aynı)
             plt.style.use('dark_background')
             plt.figure(figsize=(8, 4))
             plt.plot(df.index[-20:], df['Close'][-20:], color='#00ff00', marker='o')
@@ -91,20 +78,20 @@ async def analiz_et(bot, sheet, sembol):
             plt.close()
 
             with open(f"{sembol}.png", 'rb') as p:
-                await bot.send_photo(chat_id=MY_ID, photo=p, caption=f"🎯 {sembol}\nFiyat: {fiyat}\nRSI: {rsi}\n🤖 {yorum}", parse_mode='HTML')
+                await bot.send_photo(chat_id=MY_ID, photo=p, caption=f"🎯 <b>{sembol}</b>\nFiyat: {fiyat}\nRSI: {rsi}\n🤖 {yorum}", parse_mode='HTML')
             os.remove(f"{sembol}.png")
     except: pass
 
 async def ana_islem():
     bot = Bot(token=TOKEN)
     sheet = tabloya_baglan()
-    hisseler = guncel_bist100_cek()
     
-    await bot.send_message(chat_id=MY_ID, text=f"🚀 <b>{len(hisseler)} Hisse Taranıyor...</b>", parse_mode='HTML')
+    # Bilgi mesajı
+    await bot.send_message(chat_id=MY_ID, text=f"🚀 <b>BIST 100 Taraması Başladı</b>\nToplam {len(BIST100_HİSSELERİ)} hisse inceleniyor...", parse_mode='HTML')
     
-    for s in hisseler:
+    for s in BIST100_HİSSELERİ:
         await analiz_et(bot, sheet, s)
-        await asyncio.sleep(1.5) # yfinance ban koruması
+        await asyncio.sleep(1.2) # Banlanma koruması
 
 if __name__ == "__main__":
     asyncio.run(ana_islem())
